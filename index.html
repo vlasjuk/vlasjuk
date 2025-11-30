@@ -1,61 +1,460 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vlasjuk</title>
-    <link rel="stylesheet" href="styles.css">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --bg-color: #050505;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text-main: #ffffff;
+            --text-muted: #888888;
+            --font-main: 'Inter', sans-serif;
+            --transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            overflow-x: hidden;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        /* --- BACKGROUND CANVAS --- */
+        #star-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 10;
+            width: 90%;
+            max-width: 600px;
+            padding: 40px;
+            
+            /* Glassmorphism Effect */
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 32px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5), inset 0 0 30px rgba(255,255,255,0.02);
+            
+            opacity: 0;
+            transform: translateY(30px);
+            animation: floatUp 1s ease-out forwards;
+        }
+
+        @keyframes floatUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- LANGUAGE SWITCHER --- */
+        .lang-switch {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .lang-btn {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text-muted);
+            padding: 5px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: var(--transition);
+        }
+
+        .lang-btn.active, .lang-btn:hover {
+            color: var(--text-main);
+            border-color: rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.05);
+        }
+
+        /* --- CONTENT STYLING --- */
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            letter-spacing: -2px;
+            background: linear-gradient(135deg, #fff 0%, #aaa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 15px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            border: 1px solid rgba(0, 255, 136, 0.2);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #00ff88;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #00ff88;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.4); }
+            70% { opacity: 0.7; box-shadow: 0 0 0 10px rgba(0, 255, 136, 0); }
+            100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
+        }
+
+        .content-card {
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text-main);
+        }
+
+        p {
+            color: var(--text-muted);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* --- CONTACT SECTION --- */
+        .contact-box {
+            background: rgba(255,255,255,0.02);
+            border-radius: 16px;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid var(--glass-border);
+            transition: var(--transition);
+            cursor: pointer;
+        }
+
+        .contact-box:hover {
+            border-color: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.05);
+            transform: translateY(-2px);
+        }
+
+        .email-text {
+            font-family: var(--font-main); 
+            font-size: 1rem;
+            font-weight: 500;
+            color: #fff;
+            letter-spacing: 0.5px;
+        }
+
+        .copy-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+
+        /* --- FOOTER --- */
+        footer {
+            margin-top: 40px;
+            border-top: 1px solid var(--glass-border);
+            padding-top: 25px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            width: 100%;
+        }
+
+        .info-item {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            padding: 10px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 12px;
+            transition: var(--transition);
+        }
+        
+        .info-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: var(--text-main);
+        }
+
+        .info-item i {
+            font-size: 1rem;
+            margin-bottom: 2px;
+            color: rgba(255,255,255,0.5);
+        }
+
+        .copyright {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.2);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 480px) {
+            h1 { font-size: 2.2rem; }
+            .container { padding: 30px 20px; width: 95%; }
+            .info-grid { grid-template-columns: 1fr; } /* Untereinander auf Handy */
+        }
+    </style>
 </head>
 <body>
-    <header>
-        <nav>
-            <ul>
-                <li><a href="index.html"><span class="icon">★</span> Home</a></li>
-                <li><a href="about.html"><span class="icon">○</span> About</a></li>
-            </ul>
-        </nav>
-    </header>
-    <main>
-        <h1>Vlasjuk</h1>
-    </main>
+
+    <canvas id="star-canvas"></canvas>
+
+    <div class="container">
+        <div class="lang-switch">
+            <button class="lang-btn active" onclick="setLanguage('en')">EN</button>
+            <button class="lang-btn" onclick="setLanguage('de')">DE</button>
+        </div>
+
+        <header>
+            <h1 id="brand-name">Vlasjuk</h1>
+            <div class="status-badge">
+                <span class="status-dot"></span>
+                <span id="status-text">Placeholder</span>
+            </div>
+        </header>
+
+        <div class="content">
+            <div class="content-card">
+                <h2 id="about-title">About</h2>
+                <p id="about-text">
+                    This domain currently serves as a digital anchor. It is a placeholder for future projects and upcoming ventures. There is no active functionality at this moment, but great things are in the works.
+                </p>
+            </div>
+
+            <div class="content-card">
+                <h2 id="contact-title">Contact</h2>
+                <p id="contact-desc" style="margin-bottom: 10px;">Need to reach out?</p>
+                
+                <div class="contact-box" onclick="copyEmail()">
+                    <span class="email-text">vlasjuk@protonmail.com</span>
+                    <button class="copy-btn" id="copy-btn-icon" title="Copy to clipboard">
+                        <i class="fa-regular fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <div class="info-grid">
+                <div class="info-item">
+                    <i class="fa-solid fa-server"></i>
+                    <span>Server Online</span>
+                </div>
+                <div class="info-item">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <span>Secure Connect</span>
+                </div>
+                <div class="info-item">
+                    <i class="fa-solid fa-location-dot"></i>
+                    <span>EU Region</span>
+                </div>
+            </div>
+
+            <span class="copyright">&copy; 2025 Vlasjuk. All rights reserved.</span>
+        </footer>
+    </div>
+
+    <script>
+        /* --- TRANSLATION LOGIC --- */
+        const translations = {
+            en: {
+                status: "Placeholder",
+                aboutTitle: "About",
+                aboutText: "This domain currently serves as a digital anchor. It is a placeholder for future projects and upcoming ventures. There is no active functionality at this moment, but great things are in the works.",
+                contactTitle: "Contact",
+                contactDesc: "Need to reach out?",
+                copyTitle: "Copy to clipboard"
+            },
+            de: {
+                status: "Platzhalter",
+                aboutTitle: "About",
+                aboutText: "Diese Domain dient derzeit als digitaler Anker. Sie ist ein Platzhalter für zukünftige Projekte und Vorhaben. Im Moment gibt es hier keine aktive Funktion, aber Großes ist in Arbeit.",
+                contactTitle: "Kontakt",
+                contactDesc: "Möchten Sie Kontakt aufnehmen?",
+                copyTitle: "In die Zwischenablage kopieren"
+            }
+        };
+        
+
+        function setLanguage(lang) {
+            // Update Text
+            document.getElementById('status-text').textContent = translations[lang].status;
+            document.getElementById('about-title').textContent = translations[lang].aboutTitle;
+            document.getElementById('about-text').textContent = translations[lang].aboutText;
+            document.getElementById('contact-title').textContent = translations[lang].contactTitle;
+            document.getElementById('contact-desc').textContent = translations[lang].contactDesc;
+            document.getElementById('copy-btn-icon').title = translations[lang].copyTitle;
+
+            // Update Active Button Style
+            const btns = document.querySelectorAll('.lang-btn');
+            btns.forEach(btn => {
+                if(btn.textContent.toLowerCase() === lang) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        /* --- COPY TO CLIPBOARD FUNCTION --- */
+        function copyEmail() {
+            const email = "vlasjuk@protonmail.com";
+            navigator.clipboard.writeText(email).then(() => {
+                const btn = document.getElementById('copy-btn-icon');
+                btn.innerHTML = '<i class="fa-solid fa-check" style="color: #00ff88;"></i>';
+                
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="fa-regular fa-copy"></i>';
+                }, 2000);
+            });
+        }
+
+        /* --- INTERACTIVE MOUSE BACKGROUND --- */
+        const canvas = document.getElementById('star-canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let particles = [];
+        
+        // Maus-Tracking für Interaktion
+        let mouse = { x: null, y: null };
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.x;
+            mouse.y = e.y;
+        });
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initParticles(); // Neu initialisieren bei Resize
+        }
+        window.addEventListener('resize', resize);
+        
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 0.5; 
+                this.vy = (Math.random() - 0.5) * 0.5; 
+                this.size = Math.random() * 1.5 + 0.5;
+                this.opacity = Math.random() * 0.5 + 0.2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wrap around screen
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const particleCount = (window.innerWidth * window.innerHeight) / 9000;
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+            
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+
+                if(mouse.x != null) {
+                    const dx = p.x - mouse.x;
+                    const dy = p.y - mouse.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const connectDistance = 150; // Radius um die Maus
+
+                    if (distance < connectDistance) {
+                        ctx.beginPath();
+                        // Linie wird transparenter, je weiter weg
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${1 - distance/connectDistance})`; 
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(mouse.x, mouse.y);
+                        ctx.stroke();
+                    }
+                }
+            });
+            requestAnimationFrame(animate);
+        }
+
+        resize();
+        animate();
+
+    </script>
 </body>
 </html>
